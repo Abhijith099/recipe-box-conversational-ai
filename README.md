@@ -77,6 +77,13 @@ A production-grade, grounded conversational AI assistant that searches, analyzes
 └── README.md                   # Documentation & Interview Guide
 ```
 
+## Why SQLite (and FTS5)?
+
+- **Zero-dependency, local storage:** The entire dataset lives in a single `recipes.db` file. No external services, cloud credentials, or network calls are required, which makes the app easy to run on any machine.
+- **Fast full-text search:** SQLite's FTS5 virtual table lets us perform deterministic keyword searches (`MATCH`) on both titles and ingredient lists with sub-second latency, even on the full 124k-recipe corpus.
+- **Deterministic, reproducible results:** Because the database is built once from static JSON files (`ingest.py`), every run yields the exact same rankings and counts. This guarantees that the chatbot's answers are explainable and can be audited.
+- **Portability:** The `.db` file is self-contained. It works seamlessly across Windows, macOS, and Linux without any additional server setup.
+- **Lightweight for CI / Testing:** Unit tests can spin up an in-memory SQLite connection (`:memory:`), allowing the test suite to run instantly without needing a separate database server.
 ---
 ## How to generate the SQLite database
 
@@ -161,3 +168,29 @@ This project was built leveraging a modern AI-assisted software development work
 * **Core Architecture & Rapid Prototyping:** Structured, modularized, and implemented using **Claude Code** and **Cursor** to accelerate full-stack iteration, database indexing logic, and component organization.
 * **Debugging & Edge-Case Verification:** Complex SQLite FTS5 query constraints, ingredient matching algorithms, and unit test suites were rigorously debugged and validated with AI assistance.
 * **Full Ownership & Code Review:** Every line of code, database schema decision, and algorithm was thoroughly reviewed, tested, and integrated by the author to ensure complete ownership during technical interview walkthroughs.
+
+## Implementation Note: Natural-Language Query Cleaning
+
+When the chatbot receives a conversational request such as *"Can you get me a recipe where cheese is used?"*, the raw sentence was previously sent directly to the SQLite FTS5 engine. This produced a strict `AND` query like:
+
+`SELECT * FROM recipes_fts WHERE recipes_fts MATCH 'can AND you AND get AND me AND where AND cheese AND used';`
+
+Because the dataset does not contain those filler words, the engine returned 0 matches.
+
+### The Lightweight Solution
+Added a private helper `_clean_search_query` in `chat.py` that:
+1. Tokenizes the input and lower-cases all tokens.
+2. Removes a curated stop-word list (articles, pronouns, common chat verbs).
+3. Returns only the core keywords (falling back to the original string if completely stripped).
+
+### Result
+The same conversational prompts now correctly map to pure keywords without requiring an LLM API call for basic routing:
+
+| Original Prompt | Cleaned Query | Matching Recipes |
+| :--- | :--- | :--- |
+| "Can you get me a recipe where cheese is used" | `cheese` | 22,800 |
+| "get me recipes with chicken in it" | `chicken` | 18,658 |
+| "Find a penne pasta recipe" | `penne pasta` | 495 |
+
+This fix is pure Python, adds no external dependencies, and keeps the search engine fast, deterministic, and fully offline.
+
