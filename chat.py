@@ -111,30 +111,36 @@ class ChatSession:
     def _handle_adaptation(self, user_text: str, lower: str) -> str:
         # 1. Determine target ingredient to replace
         target_ing = None
-        for ing in ["cream", "butter", "milk", "egg"]:
+        for ing in ["cream", "butter", "milk", "egg", "heavy cream", "baking powder", "sugar"]:
             if ing in lower:
                 target_ing = ing
                 break
+                
         if not target_ing:
-            m = re.search(r'(?:replace|substitute|remove|swap)\s+([a-zA-Z]+)', lower)
+            # Capture up to 3 words for ingredients (e.g., "heavy whipping cream")
+            m = re.search(r'\b(?:replace|substitute|remove|swap|without|no)\s+([a-zA-Z\s]{3,20})\b', lower)
             if m:
                 cand = m.group(1).strip()
-                if cand not in ["this", "the", "a", "an", "recipe", "dish"]:
+                # Clean filler words
+                cand = re.sub(r'\b(?:this|the|a|an|from|in|recipe|dish)\b', '', cand).strip()
+                if cand:
                     target_ing = cand
+                    
         if not target_ing:
-            target_ing = "egg"
-        
+            return "I'm ready to adapt a recipe! Which ingredient would you like to substitute or remove?"
         # 2. Determine restriction (e.g. dairy-free, vegan)
         restriction = None
-        if "without dairy" in lower or "no dairy" in lower or "dairy-free" in lower:
+        if any(x in lower for x in ["without dairy", "no dairy", "dairy-free", "dairy free"]):
             restriction = "dairy-free"
         elif "vegan" in lower:
             restriction = "vegan"
-        elif "nut-free" in lower or "no nuts" in lower or "no peanuts" in lower:
+        elif any(x in lower for x in ["nut-free", "no nuts", "no peanuts", "nut free"]):
             restriction = "nut-free"
 
         # 3. Find base recipe
         base_recipe = None
+        
+        
         dish_match = re.search(r'(?:in|this|for|adapt)\s+([a-zA-Z\s]+?)\s+(?:recipe|dish)?(?:\s+and|\s+without|\s+to|\.|$)', lower)
         dish_query = None
         if dish_match:
@@ -263,22 +269,30 @@ class ChatSession:
 
     def _extract_ingredients_from_text(self, text: str) -> List[str]:
         """Extracts list of ingredients from natural language prompt."""
-        # Find segment after 'i have', 'we have', etc.
-        m = re.search(r'(?:i have|we have|using|with)\s+([^.]+)', text, flags=re.IGNORECASE)
+        # 1. Catch a wider variety of natural conversational openings
+        m = re.search(r'(?:i have|we have|i\'ve got|using|with|fridge has|pantry has)\s+([^.]+)', text, flags=re.IGNORECASE)
         segment = m.group(1) if m else text
         
-        # Stop at sentences or constraints
-        segment = re.split(r'\b(?:suggest|with no|without|exclude|prefer|and at most)\b', segment, flags=re.IGNORECASE)[0]
+        # 2. Chop off the end of the sentence when they start adding constraints or asking questions
+        segment = re.split(r'\b(?:suggest|with no|without|exclude|prefer|and at most|can you|make|find)\b', segment, flags=re.IGNORECASE)[0]
         
-        # Split by commas or 'and'
+        # 3. Split by commas or 'and'
         raw_items = re.split(r',|\band\b', segment)
         clean_items = []
+        
+        # Words we never want accidentally treated as ingredients
+        stop_words = {"recipes", "recipe", "these", "ingredients", "something", "anything"}
+        
         for item in raw_items:
             token = item.strip().lower()
-            token = re.sub(r'^(?:some|a|an|the|fresh|raw)\s+', '', token).strip()
-            # If token contains reasonable length
-            if token and len(token) > 2 and token not in ["recipes", "these", "ingredients"]:
+            
+            # 4. Strip out articles, common quantities, and filler verbs from the front
+            token = re.sub(r'^(?:some|a|an|the|fresh|raw|i want to|cook|where|is used)\s+', '', token).strip()
+            
+            # If the token is valid, long enough, and not in our stop words list
+            if token and len(token) > 2 and token not in stop_words:
                 clean_items.append(token)
+                
         return clean_items
 
     def _extract_max_steps(self, text: str) -> Optional[int]:
@@ -450,12 +464,35 @@ class ChatSession:
         lines.append("*Tip: Type 'show recipe 1' to view full ingredients and cooking instructions.*")
         return "\n".join(lines)
 
+    def _clean_search_query(self, user_query: str) -> str:
+        """
+        Cleans conversational filler, natural language phrasing, and common stop words
+        from user queries so that the underlying FTS5 engine receives only key terms
+        (e.g., 'Can you get me a recipe where cheese is used' -> 'cheese').
+        """
+        # Common conversational stop words / filler in recipe queries
+        stop_words = {
+            'a', 'an', 'the', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'from',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+            'can', 'could', 'will', 'would', 'shall', 'should', 'may', 'might', 'must',
+            'i', 'you', 'yo', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+            'my', 'your', 'his', 'its', 'our', 'their', 'mine', 'yours', 'ours', 'theirs',
+            'get', 'give', 'show', 'find', 'make', 'cook', 'tell', 'look', 'search', 'want', 'need', 'like', 'used', 'using',
+            'recipe', 'recipes', 'dish', 'dishes', 'food', 'something', 'anything', 'related', 'where', 'which', 'what', 'who', 'how', 'when',
+            'ingredient', 'ingredients', 'ingrident', 'ingridents', 'please', 'some'
+        }
+
+        words = re.findall(r'[a-zA-Z0-9]+', user_query.lower())
+        content_words = [w for w in words if w not in stop_words]
+        if content_words:
+            return ' '.join(content_words)
+
+        # Fallback to stripped original if everything was filtered out
+        return user_query.strip()
+
     def _handle_search(self, user_query: str) -> str:
         self.mode = "search"
-        clean = re.sub(r'^(?:find|search|give me|look for|show me|recipes? for)\s+(?:a|an|some)?\s*', '', user_query, flags=re.IGNORECASE)
-        clean = re.sub(r'\brecipes?\b', '', clean, flags=re.IGNORECASE).strip()
-        if not clean:
-            clean = user_query.strip()
+        clean = self._clean_search_query(user_query)
 
         self.active_query = clean
         recipes, total = self.engine.search_recipes(
