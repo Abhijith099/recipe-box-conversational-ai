@@ -1,0 +1,64 @@
+[
+    {
+        "id": "ar_1",
+        "source": "ar",
+        "raw_id": "1",
+        "title": "Apple Pancakes",
+        "ingredients_json": [
+            "1 cup flour",
+            "1/4 cup unsweetened applesauce",
+            "milk"
+        ],
+        "instructions": "Mix. Cook.",
+        "picture_link": "",
+        "ingredient_count": 3,
+        "step_count": 2,
+        "ingredients_clean": "1 cup flour 1/4 cup unsweetened applesauce milk"
+    },
+    {
+        "id": "ar_2",
+        "source": "ar",
+        "raw_id": "2",
+        "title": "Eggy Apple Cake",
+        "ingredients_json": [
+            "2 eggs",
+            "applesauce",
+            "flour"
+        ],
+        "instructions": "Mix. Bake.",
+        "picture_link": "",
+        "ingredient_count": 3,
+        "step_count": 3,
+        "ingredients_clean": "2 eggs applesauce flour"
+    },
+    {
+        "id": "epi_1",
+        "source": "epi",
+        "raw_id": "1",
+        "title": "Banana Muffins",
+        "ingredients_json": [
+            "1/4 cup mashed banana",
+            "flour"
+        ],
+        "instructions": "Mix. Bake.",
+        "picture_link": "",
+        "ingredient_count": 2,
+        "step_count": 2,
+        "ingredients_clean": "1/4 cup mashed banana flour"
+    },
+    {
+        "id": "fn_1",
+        "source": "fn",
+        "raw_id": "1",
+        "title": "Butter Cookies",
+        "ingredients_json": [
+            "1 cup butter",
+            "sugar"
+        ],
+        "instructions": "Cream. Bake.",
+        "picture_link": "",
+        "ingredient_count": 2,
+        "step_count": 2,
+        "ingredients_clean": "1 cup butter sugar"
+    }
+]

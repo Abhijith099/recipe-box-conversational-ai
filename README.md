@@ -4,7 +4,7 @@ A production-grade, grounded conversational AI assistant that searches, analyzes
 
 ---
 
-## 🌟 Capabilities & Requirements Addressed
+##  Capabilities & Requirements Addressed
 
 ### Task 1: Recipe Search & Factual Q&A
 1. **Zero Hallucination / Programmatic Calculations:**
@@ -60,7 +60,7 @@ A production-grade, grounded conversational AI assistant that searches, analyzes
 
 ---
 
-## 📂 Project Architecture
+##  Project Architecture
 
 ```
 ├── dataset/                    # Original Recipe Box JSON files (ar, epi, fn)
@@ -78,8 +78,28 @@ A production-grade, grounded conversational AI assistant that searches, analyzes
 ```
 
 ---
+## How to generate the SQLite database
 
-## 🚀 How to Run
+The repository ships the raw recipe JSON files (≈ 200 MB total).  
+The SQLite file `recipes.db` is **not** version‑controlled because it exceeds GitHub’s 100 MB limit.  
+
+To create it locally:
+
+```bash
+# 1️⃣ Install the runtime dependencies (once)
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt   # includes any needed extras (e.g. tqdm)
+
+# 2️⃣ Build the database
+python ingest.py
+```
+
+The script will produce `recipes.db` in the project root – ready for the chatbot to use.
+
+
+
+##  How to Run
 
 ### 1. Run the Interactive CLI (Fastest & Simplest)
 ```bash
@@ -103,7 +123,7 @@ python evaluate.py
 
 ---
 
-## 📊 Evaluation & Edge Cases Benchmark
+##  Evaluation & Edge Cases Benchmark
 
 | Test Conversation | Tested Domain | Expected Grounded Output | Ungrounded One-Shot LLM Failure Mode |
 |---|---|---|---|
@@ -117,19 +137,27 @@ python evaluate.py
 
 ---
 
-## 💬 Interview Walkthrough & Defense
+## Architecture & Design Decisions
 
-### Q1: Why integrate Task 1, Task 2, and Task 3 into a single unified architecture?
-> *"The objective of the assignment was to build a single conversational assistant that can search, analyze, match, and adapt recipes while retaining context across turns. A user starts by searching for recipes, refines by dietary constraints, switches to pantry matching based on available ingredients ('I have eggs, onions, tomatoes, and rice'), and adapts an existing recipe by substituting restricted ingredients ('Take this banana bread recipe and remove eggs'). A single unified session manager backed by a shared SQLite FTS5 database enables seamless context retention across all tasks without duplicate data storage."*
+### 1. Unified Session & Database Architecture (Tasks 1–3)
+Rather than splitting tasks into isolated scripts, the application uses a single unified session manager backed by a shared SQLite FTS5 database. This allows users to flow naturally across tasks—starting with keyword search, refining by dietary constraints, switching to pantry matching, and adapting recipes—while retaining full conversational context without duplicate data storage.
 
-### Q2: How does the ingredient-matching scoring algorithm work in Task 2?
-> *"Matching is grounded and explainable: We use SQLite FTS5 to retrieve candidates containing at least one user ingredient. Then we perform set intersection and difference against normalized ingredient lists:
-> 1. Hard constraints (exclusions like peanuts, max steps $\le 6$) are applied strictly; violated recipes are filtered out immediately.
-> 2. Remaining eligible candidates are scored by prioritizing maximum matched ingredients first, then minimizing extra/missing ingredients needed from the store, and finally minimizing instruction steps.
-> Every returned recipe explicitly shows its matched ingredients, missing ingredients, step count, and ranking justification."*
+### 2. Explainable Scoring & Constraint Enforcement (Task 2)
+To ensure recommendations are transparent and defensible, Task 2 avoids black-box LLM scoring in favor of deterministic set math:
+- **Hard Constraints:** Dietary exclusions (e.g., peanuts) and step limits are enforced strictly before scoring. Violating recipes are filtered out immediately.
+- **Deterministic Scoring Formula:** 
+  $$\text{Score} = (\text{Matched Count} \times 100) - (\text{Missing Ingredients} \times 5) - (\text{Steps} \times 2)$$
+- **Full Transparency:** Every returned recipe explicitly details its matched ingredients, missing items, step count, and ranking justification.
 
-### Q3: How do you handle ingredient quantities in Task 2?
-> *"The Recipe Box dataset records ingredients as unstructured natural language lines (e.g., '1 pinch salt', '2 (10.75 ounce) cans soup'). Because the dataset lacks standardized volume-to-weight conversions, claiming exact quantity sufficiency would be a hallucination. In compliance with the prompt requirements, the matcher performs a name-level match and outputs a transparent disclosure notice stating that quantity sufficiency was not verified."*
+### 3. Handling Unstructured Quantity Data (Task 2)
+The raw Recipe Box dataset records ingredients as free-form natural language strings (e.g., `"1 pinch salt"`, `"2 cans soup"`). Because standardized volume-to-weight conversions are absent, the matcher performs a name-level match and outputs an explicit disclosure notice confirming that exact quantity sufficiency was not mathematically verified, preventing ungrounded claims.
 
-### Q4: How does Task 3 satisfy the requirement for local evidence and recipe citations?
-> *"Instead of relying on an LLM to hallucinate substitutions, `adapter.py` identifies the ingredient's culinary role (e.g. egg is a binder/leavener, cream provides fat and viscosity). It then executes a targeted SQL query against our 124,595 recipe database to find real peer recipes in the dataset that use the substitute without the excluded item (e.g. banana breads using applesauce without eggs) and cites their exact `Recipe ID`s. It rewrites both the ingredient list and the instructions, details taste/texture trade-offs, and adds an explicit allergen safety disclaimer."*
+### 4. Grounded Substitution & Local Evidence (Task 3)
+To eliminate LLM hallucination during ingredient substitution, `adapter.py` maps ingredients to structural culinary roles (e.g., eggs as binders, heavy cream for viscosity) and queries the local 124,595-recipe database. It retrieves verified peer recipes using the substitute without the excluded item, cites their exact `Recipe ID`s as **Direct** or **Indirect** evidence, rewrites instructions and ingredients, and attaches clinical safety disclaimers.
+
+
+## Engineering Workflow & Tooling
+This project was built leveraging a modern AI-assisted software development workflow:
+* **Core Architecture & Rapid Prototyping:** Structured, modularized, and implemented using **Claude Code** and **Cursor** to accelerate full-stack iteration, database indexing logic, and component organization.
+* **Debugging & Edge-Case Verification:** Complex SQLite FTS5 query constraints, ingredient matching algorithms, and unit test suites were rigorously debugged and validated with AI assistance.
+* **Full Ownership & Code Review:** Every line of code, database schema decision, and algorithm was thoroughly reviewed, tested, and integrated by the author to ensure complete ownership during technical interview walkthroughs.
